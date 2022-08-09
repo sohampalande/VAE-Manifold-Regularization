@@ -5,7 +5,7 @@ import numpy as np
 from utils import Visualize as viz
 from model import VariationalAutoencoder 
 from utils import MNISTSampler
-import matplotlib.pyplot as plt; 
+import matplotlib.pyplot as plt 
 
 
 
