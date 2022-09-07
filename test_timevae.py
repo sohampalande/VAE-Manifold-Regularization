@@ -3,20 +3,18 @@ from utils import Visualize as viz
 from utils import MinMaxScaler
 import torch
 import numpy as np
-from torchinfo import summary
 import matplotlib
 import matplotlib.pyplot as plt;
+
 
 def set_seed(seed):
     torch.random.manual_seed(seed)
     np.random.seed(seed)
 
 
-
 if __name__ == '__main__':
-
     #set path
-    dataset_name =  'AMZN_GME_synthetic'         #AMZN_10-20, GME_10-20, AMZN_GME, AMZN_GME_synthetic, NFLX
+    dataset_name =  'AMZN_GME_synthetic'
     file_path = './datasets/' + dataset_name + '_preprocessed.npy'
 
 
