@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 from typing import List
 import numpy as np
@@ -5,8 +6,8 @@ from utils.utils import MinMaxScaler
 
 
 class ConvTimeSeriesVAE(torch.nn.Module):
-    def __init__(self, seq_len, feat_dim, latent_dim, hidden_layer_sizes, reconstruction_wt=3.0, kernel_size=3,
-                 **kwargs):
+    def __init__(self, seq_len, dataset, time_column, feature_names, latent_dim, hidden_layer_sizes,
+                 reconstruction_wt=3.0, kernel_size=3, segment_length=30, segment_stride=1, **kwargs):
         """
         Instantiate a VAE model for time series data
 
@@ -14,8 +15,12 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         ----------
         seq_len: int
             the length of the window of the time series input
-        feat_dim: int
-            the dimensionality of each point in the time series (1 for univariate time series)
+        dataset:
+            Pandas dataframe containing the time series dataset
+        time_column: str
+            column of the dataset that corresponds to the time component
+        features: List[str]
+            columns of the dataset that correspond the features
         latent_dim: int
             the dimensionality of the bottleneck layer of the TimeVAE model
         hidden_layer_sizes: List[int]
@@ -25,16 +30,24 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         kernel_size: int
             the size of the kernel for the convolutional layers
         """
-        super(ConvTimeSeriesVAE, self).__init__(**kwargs)
+        super(ConvTimeSeriesVAE, self).__init__()
 
         # Set parameters as attributes of class
         self.seq_len = seq_len
-        self.feat_dim = feat_dim
+        self.raw_data = dataset
+        self.time_index = time_column
+        self.features = feature_names
+        self.feat_dim = len(self.features)
         self.latent_dim = latent_dim
         self.reconstruction_wt = reconstruction_wt
         self.hidden_layer_sizes = hidden_layer_sizes
         self.kernel_size = kernel_size
+        self.segment_length = segment_length
+        self.segment_stride = segment_stride
         self.scaler = None
+
+        # Preprocess the data to be used by the time series generation method
+        self.dataset = self.prepare_dataset()
 
         # Initialize variables to track loss metrics
         self.total_loss_tracker = 0.0
@@ -56,6 +69,15 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         self.define_encoder()
         self.define_decoder()
         self.flatten_layer = torch.nn.Flatten()
+
+    def prepare_dataset(self):
+        # Sort the pandas dataframe by the time column (ascending) and convert to numpy array
+        temp_data = self.raw_data.sort_values(by=self.time_index)[self.features].to_numpy()
+        # Generate the segmented data
+        segmented_dataset = []
+        for i in range(temp_data.shape[0]-self.segment_length):
+            segmented_dataset.append(np.array(temp_data[i:i+self.segment_length]).T)
+        return np.array(segmented_dataset)
 
     def define_encoder(self):
         """
@@ -229,7 +251,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
         return loss
 
-    def sample(self, num_samples):
+    def sample(self, num_samples, return_dataframe=True):
         """
         Method used at inference time to draw samples from the VAE model.
 
@@ -249,9 +271,21 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         samples = torch.reshape(samples, shape=(-1, self.feat_dim, self.seq_len)).detach().numpy()
         samples = self.scaler.inverse_transform(samples)
 
-        return samples
+        # Return as dataframe in same format as raw data?
+        if return_dataframe:
+            synthetic_data = pd.DataFrame(columns=['seg_index', 'time_index']+self.features)
+            for n in range(num_samples):
+                sample_df = pd.DataFrame(samples[n].T, columns=self.features)
+                sample_df['seg_index'] = (n*np.ones(self.segment_length)).astype(int)
+                sample_df['time_index'] = (np.linspace(0, self.segment_length-1, self.segment_length)).astype(int)
+                # Concat to output data
+                synthetic_data = pd.concat([synthetic_data, sample_df])
+        else:
+            synthetic_data = samples
 
-    def fit(self, dataset, batch_size, lr=0.001, epochs=20, verbose=True):
+        return synthetic_data
+
+    def fit(self, batch_size, lr=0.001, epochs=20, verbose=True):
         """
         Fit function used to train the VAE model given a time series dataset.
 
@@ -270,7 +304,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             If true, print progress of training the model
         """
         self.scaler = MinMaxScaler()
-        scaled_data = self.scaler.fit_transform(dataset)
+        scaled_data = self.scaler.fit_transform(self.dataset)
         scaled_data = torch.Tensor(scaled_data)
 
         # Create dataloader
