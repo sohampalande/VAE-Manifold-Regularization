@@ -34,12 +34,23 @@ class TimeSeriesVAE(torch.nn.Module):
         self.reconstruction_wt = reconstruction_wt
         self.hidden_layer_sizes = hidden_layer_sizes
         self.kernel_size = kernel_size
+        self.scaler = None
 
         # Initialize variables to track loss metrics
         self.total_loss_tracker = 0.0
         self.reconstruction_loss_tracker = 0.0
         self.kl_loss_tracker = 0.0
         self.validation_loss_tracker = 0.0
+
+        # Initialize attributes related to architecture
+        self.conv1d_encoder = None
+        self.encoder_feature_size = None
+        self.dim_conv = None
+        self.mean = None
+        self.log_var = None
+        self.linear_decoder = None
+        self.conv1d_tranpose_decoder = None
+        self.decoder_output = None
 
         # Define the encoder and decoder networks
         self.define_encoder()
