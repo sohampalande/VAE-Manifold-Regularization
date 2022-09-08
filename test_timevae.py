@@ -8,11 +8,11 @@ latent_dimension = 8
 hidden_layers = [50, 100, 200]
 reconstruction_wt = 1
 kernel_size = 3
-epochs = 2
+epochs = 50
 batch_size = 32
 lr = 0.001
 seq_len = 30
-features = ['Open', 'High', 'Low', 'Close', 'Adj Close']
+features = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
 time_name = ['Date']
 dataset_name = 'AMZN_10-20'
 
