@@ -4,7 +4,7 @@ import numpy as np
 from utils.utils import MinMaxScaler
 
 
-class TimeSeriesVAE(torch.nn.Module):
+class ConvTimeSeriesVAE(torch.nn.Module):
     def __init__(self, seq_len, feat_dim, latent_dim, hidden_layer_sizes, reconstruction_wt=3.0, kernel_size=3,
                  **kwargs):
         """
@@ -25,7 +25,7 @@ class TimeSeriesVAE(torch.nn.Module):
         kernel_size: int
             the size of the kernel for the convolutional layers
         """
-        super(TimeSeriesVAE, self).__init__(**kwargs)
+        super(ConvTimeSeriesVAE, self).__init__(**kwargs)
 
         # Set parameters as attributes of class
         self.seq_len = seq_len

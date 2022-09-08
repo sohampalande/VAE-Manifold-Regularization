@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from tsvae import TimeSeriesVAE
+from models.tsvae_conv import ConvTimeSeriesVAE
 
 # Global parameters
 latent_dimension = 8
@@ -21,14 +21,16 @@ if __name__ == '__main__':
     feat_dim = dataset.shape[1]
 
     # Instantiate model and train
-    model = TimeSeriesVAE(seq_len=seq_len, feat_dim=feat_dim, latent_dim=latent_dimension,
-                          hidden_layer_sizes=hidden_layers,reconstruction_wt=reconstruction_wt, kernel_size=kernel_size)
+    model = ConvTimeSeriesVAE(seq_len=seq_len, feat_dim=feat_dim, latent_dim=latent_dimension,
+                              hidden_layer_sizes=hidden_layers,reconstruction_wt=reconstruction_wt,
+                              kernel_size=kernel_size)
 
     model.fit(dataset=dataset, batch_size=batch_size, lr=lr, epochs=epochs)
 
     print("Model Trained.")
 
-    plt.plot(model.sample(100).squeeze().T)
+    plt.plot(model.sample(100).squeeze().T, c='r')
+    plt.plot(model.sample(100).squeeze().T, c='r')
     plt.show()
 
 
