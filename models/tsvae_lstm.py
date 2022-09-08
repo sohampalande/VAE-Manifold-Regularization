@@ -257,8 +257,9 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
         Parameters
         ----------
-        dataset:
-            number of time series to draw
+        dataset: array_like
+            time series dataset as a numpy array with shape (N, D, T), where N is the total number of samples in the
+            dataset, D is the dimensionality of each multivariate time series, and T is the length of each time series
         batch_size:
             batch size to be used to compute each stochastic gradient
         lr:
@@ -289,7 +290,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             reconstruction_losses = []
 
             for x in train_data:
-                opt.zero_grad()  ##sets the gradient for each param to 0
+                opt.zero_grad()
 
                 encoder_output, x_hat, z_log_var, z_mean = self(x)  # remove other return values if not used
 

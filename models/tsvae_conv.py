@@ -258,7 +258,8 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         Parameters
         ----------
         dataset:
-            number of time series to draw
+            time series dataset as a numpy array with shape (N, D, T), where N is the total number of samples in the
+            dataset, D is the dimensionality of each multivariate time series, and T is the length of each time series
         batch_size:
             batch size to be used to compute each stochastic gradient
         lr:
