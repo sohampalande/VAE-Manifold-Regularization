@@ -24,7 +24,8 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         latent_dim: int
             the dimensionality of the bottleneck layer of the TimeVAE model
         hidden_layer_sizes: List[int]
-            a list containing defining the number of neurons and hidden layers in the encoder and deocoder (ex: [100, 250])
+            a list containing defining the number of neurons and hidden layers in the encoder and
+            decoder (ex: [100, 250])
         reconstruction_wt: float
             the weight attached to the reconstruction error term of the loss function
         kernel_size: int

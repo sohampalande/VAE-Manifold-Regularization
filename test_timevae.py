@@ -26,10 +26,8 @@ if __name__ == '__main__':
     model = ConvTimeSeriesVAE(seq_len=seq_len, dataset=dataset, time_column=time_name, feature_names=features,
                               latent_dim=latent_dimension, hidden_layer_sizes=hidden_layers,
                               reconstruction_wt=reconstruction_wt, kernel_size=kernel_size)
-
     model.fit(batch_size=batch_size, lr=lr, epochs=epochs)
 
-    print("Model Trained.")
 
     # Output synthetic data samples as csv
     model.sample(100).to_csv('./datasets/sample_synthetic_data.csv')
