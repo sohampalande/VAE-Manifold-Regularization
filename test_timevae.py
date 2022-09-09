@@ -7,13 +7,13 @@ from models.tsvae_conv import ConvTimeSeriesVAE
 latent_dimension = 8
 hidden_layers = [50, 100, 200]
 reconstruction_wt = 1
-kernel_size = 3
-epochs = 50
+kernel_size = 4
+epochs = 100
 batch_size = 32
 lr = 0.001
 seq_len = 30
 features = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-time_name = ['Date']
+time_name = 'Date'
 dataset_name = 'AMZN_10-20'
 
 
@@ -35,13 +35,13 @@ if __name__ == '__main__':
     model.sample(100).to_csv('./datasets/sample_synthetic_data.csv')
 
     # Test to see quality of generated synthetic data
-    N = 10
+    N = 50
     samples = model.sample(N, return_dataframe=False)
     compare_idx = np.random.choice(model.dataset.shape[0], N, replace=False)
     for i in range(samples.shape[1]):
         plt.figure()
-        plt.plot(samples[:, i, :].squeeze().T, c='r', alpha=0.3)
         plt.plot(model.dataset[compare_idx, i, :].squeeze().T, c='k', alpha=0.1)
+        plt.plot(samples[:, i, :].squeeze().T, c='r', alpha=0.3)
         plt.show()
 
 
