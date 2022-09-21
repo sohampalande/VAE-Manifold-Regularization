@@ -8,15 +8,18 @@ class MinMaxScaler():
     Returns:
     - norm_data: normalized data
     """
+
+    def __init__(self, by_axis):
+        self.by_axis = by_axis
+
     def fit_transform(self, data): 
         self.fit(data)
         scaled_data = self.transform(data)
         return scaled_data
 
     def fit(self, data):    
-        self.mini = np.min(data, 0)
-        self.range = np.max(data, 0) - self.mini
-        return self
+        self.mini = np.min(np.min(data, 0), axis=self.by_axis)
+        self.range = np.max(np.max(data, 0), axis=self.by_axis) - self.mini
 
     def transform(self, data):
         numerator = data - self.mini

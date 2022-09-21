@@ -3,13 +3,14 @@ import torch
 from typing import List
 import numpy as np
 from utils.utils import MinMaxScaler
+import torch.nn.functional as F
 
 
-class ConvTimeSeriesVAE(torch.nn.Module):
-    def __init__(self, dataset, time_column, feature_names, latent_dim=8, hidden_layer_sizes=(50, 100),
-                 reconstruction_wt=3.0, kernel_size=3, segment_length=30,  **kwargs):
+class LSTMTimeSeriesVAE(torch.nn.Module):
+    def __init__(self, dataset, time_column, feature_names, latent_dim, hidden_size, num_layers=2,
+                 reconstruction_wt=3.0, segment_length=30, segment_stride=1, **kwargs):
         """
-        Instantiate a VAE model for time series data
+        Instantiate a VAE model for time series data (using LSTMs)
 
         Parameters
         ----------
@@ -31,7 +32,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         kernel_size: int
             the size of the kernel for the convolutional layers
         """
-        super(ConvTimeSeriesVAE, self).__init__()
+        super(LSTMTimeSeriesVAE, self).__init__()
 
         # Set parameters as attributes of class
         self.raw_data = dataset
@@ -40,9 +41,11 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         self.feat_dim = len(self.features)
         self.latent_dim = latent_dim
         self.reconstruction_wt = reconstruction_wt
-        self.hidden_layer_sizes = hidden_layer_sizes
-        self.kernel_size = kernel_size
+        self.hidden_dim = hidden_size
+        self.num_layers = num_layers
+        self.seq_len = segment_length
         self.segment_length = segment_length
+        self.segment_stride = segment_stride
         self.scaler = None
 
         # Preprocess the data to be used by the time series generation method
@@ -65,8 +68,21 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         self.decoder_output = None
 
         # Define the encoder and decoder networks
-        self.define_encoder()
-        self.define_decoder()
+        # Encoder:
+        self.lstm_encoder = torch.nn.LSTM(input_size=self.feat_dim, hidden_size=self.hidden_dim,
+                                          num_layers=self.num_layers,  batch_first=True)
+
+        # Get mean and variance of latent distribution
+        self.mean = torch.nn.Linear(in_features=self.hidden_dim*self.seq_len, out_features=self.latent_dim)
+        self.log_var = torch.nn.Linear(in_features=self.hidden_dim*self.seq_len, out_features=self.latent_dim)
+
+        # Decoder:
+        self.decoder_fc = torch.nn.Linear(in_features=self.latent_dim, out_features=self.hidden_dim*self.seq_len)
+        self.lstm_decoder_1 = torch.nn.LSTM(input_size=self.hidden_dim, hidden_size=self.hidden_dim,
+                                            num_layers=self.num_layers, batch_first=True)
+
+        self.lstm_decoder_2 = torch.nn.LSTM(input_size=self.hidden_dim, hidden_size=self.feat_dim, num_layers=1)
+
         self.flatten_layer = torch.nn.Flatten()
 
     def prepare_dataset(self):
@@ -75,69 +91,8 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         # Generate the segmented data
         segmented_dataset = []
         for i in range(temp_data.shape[0]-self.segment_length):
-            segmented_dataset.append(np.array(temp_data[i:i+self.segment_length]).T)
+            segmented_dataset.append(np.array(temp_data[i:i+self.segment_length]))
         return np.array(segmented_dataset)
-
-    def define_encoder(self):
-        """
-        This function instantiates the encoder network of the VAE model. It is called when the class is created.
-        """
-        modules = []  # create a list to hold the number of conv1d layers
-        feat_dim_temp = self.feat_dim
-        for num_filters in self.hidden_layer_sizes:
-            modules.append(
-                torch.nn.Conv1d(in_channels=feat_dim_temp, out_channels=num_filters, kernel_size=self.kernel_size,
-                                stride=1, padding='same'))
-            modules.append(torch.nn.ReLU())
-            feat_dim_temp = num_filters
-
-        self.conv1d_encoder = torch.nn.Sequential(*modules)  # convert list of conv1d layers to nn.ModuleList
-
-        # Determine number of features mapping to mean and variance of embedding distribution
-        x = torch.randn(1, self.feat_dim, self.segment_length)
-        ex = self.conv1d_encoder(x)
-        self.encoder_feature_size = int(np.prod(ex.shape, 0))
-        self.dim_conv = int(ex.shape[1])
-
-        # Get mean and variance of latent distribution
-        self.mean = torch.nn.Linear(in_features=self.encoder_feature_size, out_features=self.latent_dim)
-        self.log_var = torch.nn.Linear(in_features=self.encoder_feature_size, out_features=self.latent_dim)
-
-    def define_decoder(self):
-        """
-        This function instantiates the decoder network of the VAE model. It is called when the class is created.
-        """
-        modules = []  # create a list to hold the number of conv1d transpose layers in the decoder
-        feat_dim_temp = self.dim_conv
-        for num_filters in list(reversed(self.hidden_layer_sizes))[:-1]:
-            modules.append(
-                torch.nn.ConvTranspose1d(in_channels=feat_dim_temp, out_channels=num_filters,
-                                         kernel_size=self.kernel_size, stride=1, padding=1))
-            modules.append(torch.nn.ReLU())
-            feat_dim_temp = num_filters
-
-        modules.append(
-            torch.nn.ConvTranspose1d(in_channels=feat_dim_temp, out_channels=self.feat_dim,
-                                     kernel_size=self.kernel_size, stride=1, padding=1))
-        modules.append(torch.nn.ReLU())
-        modules.append(torch.nn.Flatten())
-
-        self.conv1d_tranpose_decoder = torch.nn.Sequential(*modules)  # convert list of conv1d layers to nn.ModuleList
-
-        # example to determine size of linear layer
-        self.linear_decoder = torch.nn.Linear(in_features=self.latent_dim, out_features=self.encoder_feature_size)
-
-        x = torch.randn((1, self.latent_dim))
-        x = self.linear_decoder(x)
-
-        x = torch.reshape(x, shape=(-1, self.hidden_layer_sizes[-1], self.segment_length))
-
-        x = self.conv1d_tranpose_decoder(x)
-        num_features = int(np.prod(x.size(), 0))
-
-        self.decoder_output = torch.nn.Sequential(*[torch.nn.Linear(in_features=num_features,
-                                                                    out_features=self.feat_dim * self.segment_length),
-                                                    torch.nn.Sigmoid()])
 
     def encoder(self, x):
         """
@@ -159,7 +114,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             means of Gaussian posterior distribution of VAE latent variable
         """
         # Forward pass through convolutional layers
-        x = self.conv1d_encoder(x)
+        x, _ = self.lstm_encoder(x)
         x = self.flatten_layer(x)
 
         # Obtain mean and variance
@@ -191,12 +146,12 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         samples
             samples from posterior distribution in latent space (sampled VAE embeddings)
         """
-        x = self.linear_decoder(z)
-        x = torch.reshape(x, shape=(-1, self.hidden_layer_sizes[-1], self.segment_length))
-        x = self.conv1d_tranpose_decoder(x)
-        x = self.decoder_output(x)
-        samples = torch.reshape(x, shape=(-1, self.feat_dim, self.segment_length))
-        return samples
+        # pad the embedding with zeros
+        z = self.decoder_fc(z).view(-1, self.seq_len, self.hidden_dim)
+
+        x, _ = self.lstm_decoder_1(z)
+        x, _ = self.lstm_decoder_2(x)
+        return x
 
     def forward(self, x):
         """
@@ -264,7 +219,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
         Z = torch.randn(num_samples, self.latent_dim)
         samples = self.decoder(Z)
-        samples = torch.reshape(samples, shape=(-1, self.feat_dim, self.segment_length)).detach().numpy()
+        samples = torch.reshape(samples, shape=(-1, self.seq_len, self.feat_dim)).detach().numpy()
         samples = self.scaler.inverse_transform(samples)
 
         # Return as dataframe in same format as raw data?
@@ -299,14 +254,14 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         verbose: bool
             If true, print progress of training the model
         """
-        self.scaler = MinMaxScaler(by_axis=1)
+        self.scaler = MinMaxScaler(by_axis=0)
         scaled_data = self.scaler.fit_transform(self.dataset)
         scaled_data = torch.Tensor(scaled_data)
 
         # Create dataloader
         train_data = torch.utils.data.DataLoader(scaled_data, batch_size, shuffle=True)
 
-        opt = torch.optim.Adam(self.parameters(), lr=lr, eps=1e-07)  # use Adam optimizer
+        opt = torch.optim.Adam(self.parameters(), lr=lr)  # use Adam optimizer
 
         # store average losses after each epoch to plot loss curves
         kl_losses_all = []
