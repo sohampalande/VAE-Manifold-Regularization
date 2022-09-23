@@ -6,8 +6,8 @@ from utils.utils import MinMaxScaler
 
 
 class ConvTimeSeriesVAE(torch.nn.Module):
-    def __init__(self, dataset, time_column, feature_names, latent_dim=8, hidden_layer_sizes=(50, 100),
-                 reconstruction_wt=3.0, kernel_size=3, segment_length=30,  **kwargs):
+    def __init__(self, dataset, time_column, feature_names, latent_dim: int = 8, hidden_layer_sizes: tuple = (50, 100),
+                 reconstruction_wt: float = 1.0, kernel_size: int = 3, segment_length: int = 30,  **kwargs):
         """
         Instantiate a VAE model for time series data
 
@@ -33,6 +33,14 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         """
         super(ConvTimeSeriesVAE, self).__init__()
 
+        # Raise errors if attributes don't meet specific requirements
+        if latent_dim <= 0:
+            raise ValueError("Latent dimension must be a strictly positive integer ")
+        if reconstruction_wt < 0:
+            raise ValueError("Reconstruction weight should be non-negative")
+        if segment_length <= 0 or segment_length>=dataset.shape[0]:
+            raise ValueError("Cannot choose a segmentation length that is larger than the dataset size")
+
         # Set parameters as attributes of class
         self.raw_data = dataset
         self.time_index = time_column
@@ -43,16 +51,19 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         self.hidden_layer_sizes = hidden_layer_sizes
         self.kernel_size = kernel_size
         self.segment_length = segment_length
-        self.scaler = None
 
         # Preprocess the data to be used by the time series generation method
         self.dataset = self.prepare_dataset()
+        self.scaler = MinMaxScaler(by_axis=1)
+        self.scaled_dataset = self.scaler.fit_transform(self.dataset)
 
         # Initialize variables to track loss metrics
-        self.total_loss_tracker = 0.0
-        self.reconstruction_loss_tracker = 0.0
-        self.kl_loss_tracker = 0.0
-        self.validation_loss_tracker = 0.0
+        self.total_loss_tracker = 'No Value'
+        self.reconstruction_loss_tracker = 'No Value'
+        self.kl_loss_tracker = 'No Value'
+        self.kl_losses_all = []
+        self.rec_losses_all = []
+        self.total_losses_all = []
 
         # Initialize attributes related to architecture
         self.conv1d_encoder = None
@@ -80,7 +91,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
     def define_encoder(self):
         """
-        This function instantiates the encoder network of the VAE model. It is called when the class is created.
+        This function instantiates the encoder network of the VAE model. It is called when the object is created.
         """
         modules = []  # create a list to hold the number of conv1d layers
         feat_dim_temp = self.feat_dim
@@ -105,7 +116,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
     def define_decoder(self):
         """
-        This function instantiates the decoder network of the VAE model. It is called when the class is created.
+        This function instantiates the decoder network of the VAE model. It is called when the object is created.
         """
         modules = []  # create a list to hold the number of conv1d transpose layers in the decoder
         feat_dim_temp = self.dim_conv
@@ -226,27 +237,6 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
         return embeddings, reconstructions, z_log_var, z_mean
 
-    def get_reconstruction_loss(self, x, x_hat):
-        """
-        Compute the reconstruction loss (in terms of MSE) between two time series.
-
-        Parameters
-        ----------
-        x:
-            input time series
-        x_hat:
-            reconstructed time series
-
-        Returns
-        -------
-        loss
-            reconstruction loss
-        """
-        err_time = torch.square(torch.subtract(x, x_hat))
-        loss = torch.sum(err_time)
-
-        return loss
-
     def sample(self, num_samples, return_dataframe=True):
         """
         Method used at inference time to draw samples from the VAE model.
@@ -255,33 +245,35 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         ----------
         num_samples:
             number of time series to draw
+        return_dataframe: Boolean
+            if the user wants to return a pandas DataFrame (default True) or a numpy ndarray containing the segments
 
         Returns
         -------
         samples:
             samples drawn from the model
         """
+        with torch.no_grad():
+            Z = torch.randn(num_samples, self.latent_dim)
+            samples = self.decoder(Z)
+            samples = torch.reshape(samples, shape=(-1, self.feat_dim, self.segment_length)).detach().numpy()
+            samples = self.scaler.inverse_transform(samples)
 
-        Z = torch.randn(num_samples, self.latent_dim)
-        samples = self.decoder(Z)
-        samples = torch.reshape(samples, shape=(-1, self.feat_dim, self.segment_length)).detach().numpy()
-        samples = self.scaler.inverse_transform(samples)
-
-        # Return as dataframe in same format as raw data?
-        if return_dataframe:
-            synthetic_data = pd.DataFrame(columns=['seg_index', 'time_index']+self.features)
-            for n in range(num_samples):
-                sample_df = pd.DataFrame(samples[n].T, columns=self.features)
-                sample_df['seg_index'] = (n*np.ones(self.segment_length)).astype(int)
-                sample_df['time_index'] = (np.linspace(0, self.segment_length-1, self.segment_length)).astype(int)
-                # Concat to output data
-                synthetic_data = pd.concat([synthetic_data, sample_df])
-        else:
-            synthetic_data = samples
+            # Return as dataframe in same format as raw data?
+            if return_dataframe:
+                synthetic_data = pd.DataFrame(columns=['seg_index', 'time_index']+self.features)
+                for n in range(num_samples):
+                    sample_df = pd.DataFrame(samples[n].T, columns=self.features)
+                    sample_df['seg_index'] = (n*np.ones(self.segment_length)).astype(int)
+                    sample_df['time_index'] = (np.linspace(0, self.segment_length-1, self.segment_length)).astype(int)
+                    # Concat to output data
+                    synthetic_data = pd.concat([synthetic_data, sample_df])
+            else:
+                synthetic_data = samples
 
         return synthetic_data
 
-    def fit(self, batch_size, lr=0.001, epochs=20, verbose=True):
+    def fit(self, batch_size: int, lr=0.001, epochs: int = 20, verbose=True):
         """
         Fit function used to train the VAE model given a time series dataset.
 
@@ -299,20 +291,20 @@ class ConvTimeSeriesVAE(torch.nn.Module):
         verbose: bool
             If true, print progress of training the model
         """
-        self.scaler = MinMaxScaler(by_axis=1)
-        scaled_data = self.scaler.fit_transform(self.dataset)
-        scaled_data = torch.Tensor(scaled_data)
+        # Raise errors if attributes don't meet specific requirements
+        if batch_size <= 0 or batch_size >= self.scaled_dataset.shape[0]:
+            raise ValueError("Batch size must be a positive and less than the training data size ")
+        if lr <= 0:
+            raise ValueError("Learning rate must be strictly positive")
+        if epochs <= 0:
+            raise ValueError("Epochs must be specified as a positive number")
 
         # Create dataloader
-        train_data = torch.utils.data.DataLoader(scaled_data, batch_size, shuffle=True)
+        train_data = torch.utils.data.DataLoader(torch.Tensor(self.scaled_dataset), batch_size, shuffle=True)
 
         opt = torch.optim.Adam(self.parameters(), lr=lr, eps=1e-07)  # use Adam optimizer
 
         # store average losses after each epoch to plot loss curves
-        kl_losses_all = []
-        rec_losses_all = []
-        total_losses_all = []
-
         for epoch in range(epochs):
 
             total_losses = []
@@ -320,26 +312,26 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             reconstruction_losses = []
 
             for x in train_data:
-                opt.zero_grad()  ##sets the gradient for each param to 0
+                opt.zero_grad()
 
                 encoder_output, x_hat, z_log_var, z_mean = self(x)  # remove other return values if not used
 
                 # compute reconstruction loss
-                loss = self.get_reconstruction_loss(x, x_hat)
+                loss = torch.sum(torch.square(torch.subtract(x, x_hat)))
 
                 # compute KL loss
                 kl_loss = -0.5 * (1 + z_log_var - torch.square(z_mean) - torch.exp(z_log_var))
                 kl_loss = torch.sum(torch.sum(kl_loss, dim=1))
 
                 # compute total loss
-                total_loss = self.reconstruction_wt * loss + kl_loss
+                elbo_loss = self.reconstruction_wt * loss + kl_loss
 
-                total_loss.backward()
+                elbo_loss.backward()
 
                 opt.step()
 
                 # update metrics
-                total_losses.append(total_loss.detach().numpy())
+                total_losses.append(elbo_loss.detach().numpy())
                 kl_losses.append(kl_loss.detach().numpy())
                 reconstruction_losses.append(loss.detach().numpy())
 
@@ -348,9 +340,9 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             self.reconstruction_loss_tracker = np.mean(reconstruction_losses)
 
             # record loss in list
-            kl_losses_all.append(self.kl_loss_tracker)
-            rec_losses_all.append(self.reconstruction_loss_tracker)
-            total_losses_all.append(self.total_loss_tracker)
+            self.kl_losses_all.append(self.kl_loss_tracker)
+            self.rec_losses_all.append(self.reconstruction_loss_tracker)
+            self.total_losses_all.append(self.total_loss_tracker)
 
             if verbose:
                 print(f'Epoch: {epoch}')

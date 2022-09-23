@@ -1,7 +1,7 @@
 import numpy as np
 
 
-class MinMaxScaler():
+class MinMaxScaler:
     """Min Max normalizer.
     Args:
     - data: original data
@@ -17,9 +17,16 @@ class MinMaxScaler():
         scaled_data = self.transform(data)
         return scaled_data
 
-    def fit(self, data):    
-        self.mini = np.min(np.min(data, 0), axis=self.by_axis)
-        self.range = np.max(np.max(data, 0), axis=self.by_axis) - self.mini
+    def fit(self, data):
+        # Axis where shape is being subtracted
+        axis = int((1-self.by_axis))+1
+        # Get transformation params and reshape accordingly
+        shape = np.ones(len(np.shape(data)), dtype=int)
+        shape[axis] = int(data.shape[axis])
+        shape = tuple(shape)
+
+        self.mini = np.reshape(np.min(np.min(data, 0), axis=self.by_axis), shape)
+        self.range = np.reshape(np.max(np.max(data, 0), axis=self.by_axis), shape) - self.mini
 
     def transform(self, data):
         numerator = data - self.mini

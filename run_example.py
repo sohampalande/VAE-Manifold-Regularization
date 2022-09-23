@@ -13,7 +13,7 @@ hidden_layers = [50, 100, 200]
 hidden_size = 60*len(features)
 reconstruction_wt = 1
 kernel_size = 4
-epochs = 50
+epochs = 10
 batch_size = 64
 num_layers = 1
 lr = 0.001
@@ -26,12 +26,12 @@ if __name__ == '__main__':
     dataset = pd.read_csv(file_path)
 
     # Instantiate model and train
-    model = LSTMTimeSeriesVAE(seq_len=seq_len, dataset=dataset, time_column=time_name, feature_names=features,
-                              latent_dim=latent_dimension, hidden_size=hidden_size,
-                              reconstruction_wt=reconstruction_wt, num_layers=num_layers, segment_length=seq_len)
-    # model = ConvTimeSeriesVAE(seq_len=seq_len, dataset=dataset, time_column=time_name, feature_names=features,
-    #                           latent_dim=latent_dimension, hidden_layer_sizes=hidden_layers,
-    #                           reconstruction_wt=reconstruction_wt, kernel_size=kernel_size)
+    # model = LSTMTimeSeriesVAE(seq_len=seq_len, dataset=dataset, time_column=time_name, feature_names=features,
+    #                           latent_dim=latent_dimension, hidden_size=hidden_size,
+    #                           reconstruction_wt=reconstruction_wt, num_layers=num_layers, segment_length=seq_len)
+    model = ConvTimeSeriesVAE(seq_len=seq_len, dataset=dataset, time_column=time_name, feature_names=features,
+                              latent_dim=latent_dimension, hidden_layer_sizes=hidden_layers,
+                              reconstruction_wt=reconstruction_wt, kernel_size=kernel_size)
     model.fit(batch_size=batch_size, lr=lr, epochs=epochs)
 
 
