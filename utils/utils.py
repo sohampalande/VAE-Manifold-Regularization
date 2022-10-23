@@ -9,8 +9,9 @@ class MinMaxScaler:
     - norm_data: normalized data
     """
 
-    def __init__(self, by_axis):
+    def __init__(self, by_axis, eps=1e-16):
         self.by_axis = by_axis
+        self.eps = eps
 
     def fit_transform(self, data): 
         self.fit(data)
@@ -30,7 +31,7 @@ class MinMaxScaler:
 
     def transform(self, data):
         numerator = data - self.mini
-        scaled_data = numerator / (self.range + 1e-7)
+        scaled_data = numerator / (self.range + self.eps)
         return scaled_data
 
     def inverse_transform(self, data):

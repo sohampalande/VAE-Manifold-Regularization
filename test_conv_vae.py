@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 import pytest
 from models.tsvae_conv import ConvTimeSeriesVAE
+from utils.metrics import compute_f1, compute_mae, train_rnn
 
 
 def create_sample_model(time_length=1000, num_features=5, segment_length=50, latent_dim=8,
@@ -27,11 +28,11 @@ def test_constructor():
 
     # Check if certain attributes give problems
     with pytest.raises(ValueError):
-        model = create_sample_model(latent_dim=-1)
+        create_sample_model(latent_dim=-1)
     with pytest.raises(ValueError):
-        model = create_sample_model(reconstruction_wt=-17)
+        create_sample_model(reconstruction_wt=-17)
     with pytest.raises(ValueError):
-        model = create_sample_model(time_length=1000, segment_length=1001)
+        create_sample_model(time_length=1000, segment_length=1001)
 
     # Test dataset segmentation
     model = create_sample_model()
@@ -153,4 +154,26 @@ def test_fit_method():
         assert len(model.kl_losses_all) == n_epochs+1
         assert len(model.rec_losses_all) == n_epochs+1
         assert len(model.total_losses_all) == n_epochs+1
+
+
+def test_metrics():
+    model = create_sample_model()
+    # Extract datasets for comparison
+    real_data = model.scaled_dataset[:100]
+    synthetic_data = model.sample(num_samples=real_data.shape[0], return_dataframe=False, inverse_scale=False)
+    # Test F1 score
+    f1_score = compute_f1(real_data, synthetic_data)
+    assert f1_score > 0
+    assert f1_score < 1
+    # Test function that trains the rnn
+    X = [synthetic_data[k, :, :-1].T for k in range(synthetic_data.shape[0])]
+    y = [synthetic_data[k, :, -1].squeeze() for k in range(synthetic_data.shape[0])]
+    with pytest.raises(ValueError):
+        train_rnn(X, y, mode=3)
+    with pytest.raises(ValueError):
+        train_rnn(X, y, mode='NN')
+    # Test mae score
+    mae_score = compute_mae(real_data, synthetic_data)
+    assert mae_score > 0
+
 

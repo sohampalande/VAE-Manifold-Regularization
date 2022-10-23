@@ -3,6 +3,7 @@ import torch
 from typing import List
 import numpy as np
 from utils.utils import MinMaxScaler
+from utils.metrics import compute_f1, compute_mae
 
 
 class ConvTimeSeriesVAE(torch.nn.Module):
@@ -38,7 +39,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             raise ValueError("Latent dimension must be a strictly positive integer ")
         if reconstruction_wt < 0:
             raise ValueError("Reconstruction weight should be non-negative")
-        if segment_length <= 0 or segment_length>=dataset.shape[0]:
+        if segment_length <= 0 or segment_length >= dataset.shape[0]:
             raise ValueError("Cannot choose a segmentation length that is larger than the dataset size")
 
         # Set parameters as attributes of class
@@ -237,7 +238,7 @@ class ConvTimeSeriesVAE(torch.nn.Module):
 
         return embeddings, reconstructions, z_log_var, z_mean
 
-    def sample(self, num_samples, return_dataframe=True):
+    def sample(self, num_samples, return_dataframe=True, inverse_scale=True):
         """
         Method used at inference time to draw samples from the VAE model.
 
@@ -257,7 +258,8 @@ class ConvTimeSeriesVAE(torch.nn.Module):
             Z = torch.randn(num_samples, self.latent_dim)
             samples = self.decoder(Z)
             samples = torch.reshape(samples, shape=(-1, self.feat_dim, self.segment_length)).detach().numpy()
-            samples = self.scaler.inverse_transform(samples)
+            if inverse_scale:
+                samples = self.scaler.inverse_transform(samples)
 
             # Return as dataframe in same format as raw data?
             if return_dataframe:
@@ -350,3 +352,40 @@ class ConvTimeSeriesVAE(torch.nn.Module):
                 print(f'Reconstruction loss = {self.reconstruction_loss_tracker: .4f}')
                 print(f'KL loss = {self.kl_loss_tracker: .4f}')
                 print("")
+
+    def compute_metrics(self):
+        """
+        Evaluation of model based on the real data
+        """
+        metrics = {}
+        # Draw samples the same size as data
+        real_data = self.scaled_dataset
+        synthetic_data = self.sample(num_samples=real_data.shape[0], return_dataframe=False, inverse_scale=False)
+        # Compute F1 score
+        metrics['F1-score'] = compute_f1(real_data, synthetic_data)
+        # Compute RNN-based MAE loss
+        metrics['MAE'] = compute_mae(real_data, synthetic_data)
+        return metrics
+
+    def save(self, path):
+        """
+        Save the parameters of the model
+
+        Parameters
+        ----------
+        path: str
+            path where the model state dictionary should be saved
+        """
+        torch.save(self.state_dict(), path)
+
+    def load(self, path):
+        """
+        Load the parameters of the model
+
+        Parameters
+        ----------
+        path: str
+            path to valid model state dictionary of VAE model
+        """
+        self.load_state_dict(torch.load(path))
+
